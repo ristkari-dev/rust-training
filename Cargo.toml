@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["tools/*"]
+members = ["tools/*", "lessons/*/exercises", "lessons/*/solutions"]
+default-members = ["tools/*", "lessons/*/solutions"]
 
 [workspace.package]
 edition = "2024"
