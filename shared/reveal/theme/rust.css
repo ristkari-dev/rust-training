@@ -1,0 +1,25 @@
+/* Rust-flavored reveal.js theme. Builds on the black theme by overriding
+   accent colors. Do not edit shared/reveal/dist/ directly; edit this file. */
+@import url("../dist/theme/black.css");
+
+:root {
+  --r-link-color: #d28445;
+  --r-link-color-hover: #f1a76b;
+  --r-selection-background-color: #b7410e;
+  --r-heading-color: #f4e4c1;
+  --r-main-color: #f4e4c1;
+}
+
+.reveal a {
+  color: var(--r-link-color);
+}
+
+.reveal pre code {
+  background: #1a1a1a;
+  border-left: 4px solid #b7410e;
+  padding: 0.6em 0.8em;
+}
+
+.reveal .progress {
+  color: #b7410e;
+}
