@@ -1,6 +1,9 @@
-//! Exercises for lesson 01-hello-rust.
-//! Make the tests in `tests/exercise.rs` pass.
+//! Lesson 01 — exercises.
+//!
+//! Implement `greet` so that `cargo test --package hello-rust-exercises`
+//! passes. The tests live in `tests/exercise.rs`.
 
-pub fn add(_a: i32, _b: i32) -> i32 {
-    todo!("implement add")
+#[must_use]
+pub fn greet(_name: &str) -> String {
+    todo!("return a greeting like \"Hello, <name>!\"")
 }
