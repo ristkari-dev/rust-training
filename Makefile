@@ -10,3 +10,42 @@ COMPILE_FAIL := cargo run --quiet --package compile-fails --
 help: ## Show this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "Available targets:\n\n"} \
 	      /^[a-zA-Z_-]+:.*##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+.PHONY: build
+build: ## Compile every crate in the workspace, including exercise stubs.
+	cargo build --workspace --all-targets
+
+.PHONY: test
+test: build ## CI test: tools + solutions pass; exercises ship broken.
+	cargo test
+	$(COMPILE_FAIL) --expect broken lessons
+
+.PHONY: lint
+lint: ## Run clippy and rustfmt --check across the workspace.
+	cargo clippy --workspace --all-targets -- -D warnings
+	cargo fmt --all --check
+
+.PHONY: fmt
+fmt: ## Format the workspace.
+	cargo fmt --all
+
+.PHONY: ci
+ci: lint test ## Run the full local CI sequence.
+
+.PHONY: new-lesson
+new-lesson: ## Scaffold a new lesson. Usage: make new-lesson NAME=NN-name
+	@if [ -z "$(NAME)" ]; then echo "NAME is required (e.g. make new-lesson NAME=07-ownership)"; exit 2; fi
+	$(NEW_LESSON) $(NAME)
+
+.PHONY: slides-dev
+slides-dev: ## Serve a lesson's slides on http://localhost:8000. Usage: make slides-dev LESSON=NN-name
+	@if [ -z "$(LESSON)" ]; then echo "LESSON is required (e.g. make slides-dev LESSON=01-hello-rust)"; exit 2; fi
+	$(SLIDES_DEV) --lesson $(LESSON)
+
+.PHONY: verify
+verify: ## Student check: run a lesson's exercise tests + compile-fail compiles. Usage: make verify LESSON=NN-name
+	@if [ -z "$(LESSON)" ]; then echo "LESSON is required (e.g. make verify LESSON=01-hello-rust)"; exit 2; fi
+	cargo test --manifest-path lessons/$(LESSON)/exercises/Cargo.toml
+	@if [ -d "lessons/$(LESSON)/exercises/compile_fails" ]; then \
+		$(COMPILE_FAIL) --expect compiles lessons/$(LESSON); \
+	fi
