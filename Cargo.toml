@@ -1,0 +1,31 @@
+[workspace]
+resolver = "3"
+members = ["tools/*", "lessons/*/exercises", "lessons/*/solutions"]
+default-members = ["tools/*", "lessons/*/solutions"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.lints.rust]
+rust_2018_idioms = { level = "deny", priority = -1 }
+unused = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+# Lints that fight with teaching ownership/early Rust:
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+needless_pass_by_value = "allow"
+module_name_repetitions = "allow"
+
+[workspace.dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+toml_edit = "0.22"
+walkdir = "2"
+tempfile = "3"
+tiny_http = "0.12"

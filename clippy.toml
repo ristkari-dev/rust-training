@@ -1,0 +1,3 @@
+# Per-lint configuration goes here. Lints themselves are enforced in
+# workspace-level [lints] in Cargo.toml.
+msrv = "1.85"
