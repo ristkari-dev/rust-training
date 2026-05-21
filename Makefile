@@ -5,6 +5,7 @@ SHELL := /bin/bash
 NEW_LESSON   := cargo run --quiet --package new-lesson --
 SLIDES_DEV   := cargo run --quiet --package slides-dev --
 COMPILE_FAIL := cargo run --quiet --package compile-fails --
+BUILD_INDEX  := cargo run --quiet --package build-index --
 
 .PHONY: help
 help: ## Show this help.
@@ -49,3 +50,13 @@ verify: ## Student check: run a lesson's exercise tests + compile-fail compiles.
 	@if [ -d "lessons/$(LESSON)/exercises/compile_fails" ]; then \
 		$(COMPILE_FAIL) --expect compiles lessons/$(LESSON); \
 	fi
+
+.PHONY: slides-build
+slides-build: ## Build the static slides site into dist/
+	$(BUILD_INDEX) --lessons lessons --shared shared/reveal --out dist
+
+.PHONY: slides-docker
+slides-docker: ## Build the deploy image and run it locally on http://localhost:8080
+	docker build -t rust-training-slides:local -f deploy/Dockerfile .
+	@echo "starting container on http://localhost:8080  (Ctrl-C to stop)"
+	docker run --rm -p 8080:8080 -e PORT=8080 rust-training-slides:local
