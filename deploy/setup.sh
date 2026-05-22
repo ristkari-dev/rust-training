@@ -11,7 +11,11 @@ SERVICE_NAME="${SERVICE_NAME:-rust-training-slides}"
 SA_NAME="${SA_NAME:-github-deploy-rust}"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 WIF_POOL="${WIF_POOL:-github-actions}"
-WIF_PROVIDER="${WIF_PROVIDER:-github}"
+# Provider names must be unique-per-repo within a shared pool, because each
+# provider has its own attribute condition restricting which GitHub repo can
+# impersonate. The go-training repo already owns the plain "github" provider;
+# use a repo-suffixed name here so the two coexist without conflict.
+WIF_PROVIDER="${WIF_PROVIDER:-github-rust-training}"
 GITHUB_REPO="${GITHUB_REPO:-ristkari-dev/rust-training}"
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }

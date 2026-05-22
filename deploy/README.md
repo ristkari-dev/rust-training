@@ -31,10 +31,18 @@ The script is idempotent — re-runnable. It:
 3. Creates service account `github-deploy-rust@ristkari-dev.iam.gserviceaccount.com`.
 4. Grants it `roles/artifactregistry.writer`, `roles/run.admin`,
    `roles/iam.serviceAccountUser`.
-5. Creates Workload Identity Federation pool `github-actions` and OIDC
-   provider `github`, scoped to this repo only. (The pool is shared with
-   the `go-training` deploy; the provider's `attribute.repository`
-   condition isolates which repo can impersonate which SA.)
+5. Creates Workload Identity Federation pool `github-actions` (shared with
+   sibling course repos) and OIDC provider `github-rust-training`, scoped
+   to this repo only via an `attribute.repository` condition.
+
+   **Why the per-repo provider name:** the pool is shared across course
+   repos, but each provider's attribute condition restricts which GitHub
+   repository can mint tokens through it. If two repos tried to share the
+   same provider name (e.g. plain `github`), whichever ran setup first
+   would "own" the condition and the other repo's auth would be rejected
+   with `unauthorized_client: The given credential is rejected by the
+   attribute condition.` Suffixing the provider with the repo name keeps
+   each repo's deploy independent.
 6. Binds the SA so GitHub Actions on this repo can impersonate it via WIF.
 7. Prints the three values you need as GitHub repo secrets.
 
