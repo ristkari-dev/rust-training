@@ -14,6 +14,8 @@ env:
   AR_REPO: rust-training
   IMAGE_NAME: slides
   SERVICE_NAME: rust-training-slides
+  # Opt JS-based actions onto Node 24 ahead of GitHub's 2026-06-02 default flip.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   deploy:
