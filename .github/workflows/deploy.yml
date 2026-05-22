@@ -23,6 +23,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify required secrets are set
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          WIP: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          SA: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+        run: |
+          missing=()
+          [ -z "$PROJECT_ID" ] && missing+=("GCP_PROJECT_ID")
+          [ -z "$WIP" ]        && missing+=("GCP_WORKLOAD_IDENTITY_PROVIDER")
+          [ -z "$SA" ]         && missing+=("GCP_SERVICE_ACCOUNT_EMAIL")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing required secrets: ${missing[*]}"
+            echo "See deploy/README.md for setup instructions."
+            exit 1
+          fi
+
       - id: auth
         uses: google-github-actions/auth@v2
         with:
