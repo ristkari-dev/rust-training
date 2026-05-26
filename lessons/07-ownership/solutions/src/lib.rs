@@ -1,6 +1,15 @@
-//! Reference solution for lesson 07-ownership.
+//! Lesson 07 — reference solutions.
 
 #[must_use]
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
+pub fn append_excl(mut s: String) -> String {
+    s.push('!');
+    s
+}
+
+#[must_use]
+pub fn swap_and_join(a: String, b: String) -> String {
+    let mut result = b;
+    result.push(' ');
+    result.push_str(&a);
+    result
 }
