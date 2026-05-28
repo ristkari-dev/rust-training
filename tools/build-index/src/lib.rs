@@ -117,7 +117,7 @@ pub const ALL_LESSONS: &[LessonInfo] = &[
     },
     LessonInfo {
         number: "11",
-        slug: "iterators",
+        slug: "iterators-collections",
         title: "Iterators & collections",
         blurb: "Vec · HashMap · iterator chains",
         phase: 2,
