@@ -25,6 +25,7 @@ module_name_repetitions = "allow"
 [workspace.dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+thiserror = "2"
 toml_edit = "0.22"
 walkdir = "2"
 tempfile = "3"
