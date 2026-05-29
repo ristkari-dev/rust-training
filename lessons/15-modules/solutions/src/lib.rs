@@ -1,6 +1,6 @@
-//! Reference solution for lesson 15-modules.
+//! Lesson 15 — reference solutions.
 
-#[must_use]
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
-}
+pub mod geometry;
+
+pub use geometry::shapes::rectangle_area;
+pub use geometry::total_area;
