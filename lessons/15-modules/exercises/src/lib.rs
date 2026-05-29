@@ -1,7 +1,13 @@
-//! Exercises for lesson 15-modules.
-//! Make the tests in `tests/exercise.rs` pass.
+//! Lesson 15 — exercises.
+//!
+//! Implement `rectangle_area` (warm-up, in `geometry/shapes.rs`) and
+//! `total_area` (main, in `geometry.rs`) so that `cargo test
+//! --manifest-path lessons/15-modules/exercises/Cargo.toml` passes. The
+//! module structure and re-exports are given — this lesson is about how
+//! code is organized into modules. The tests live in
+//! `tests/exercise.rs`.
 
-#[must_use]
-pub fn add(_a: i32, _b: i32) -> i32 {
-    todo!("implement add")
-}
+pub mod geometry;
+
+pub use geometry::shapes::rectangle_area;
+pub use geometry::total_area;
