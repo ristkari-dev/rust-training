@@ -1,5 +1,7 @@
 # Lesson 23 — HTTP services with Axum — design
 
+> **Superseded in part.** The implementation plan (`docs/superpowers/plans/2026-09-17-lesson-23-axum.md`, section "Deviations from the spec") lists empirically verified corrections to this design — notably: no `#[allow(clippy::unused_async)]` is needed, the undone exercise crate shows 7 failed + 1 passed, and real axum reports a missing `Clone` first as a `Handler<_, _>` error. Where they differ, the plan's deviations and the shipped `lessons/23-axum/` files are authoritative.
+
 The second lesson of Phase 6 (Production services). `axum` is the async
 web framework built on tokio (and tower/hyper). You write **handlers**
 (async functions that return something implementing `IntoResponse`), pull
