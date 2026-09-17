@@ -92,7 +92,7 @@ async fn greets() {
 }
 ```
 
-A handler is just an `async fn`, so construct the extractors and call it directly — no TCP, no running server. (To actually serve it you'd bind a listener: `axum::serve(TcpListener::bind(addr).await?, app).await?`.)
+A handler is just an `async fn`, so construct the extractors and call it directly — no TCP, no running server. (To actually serve the app you'd bind a listener: `axum::serve(TcpListener::bind(addr).await?, app).await?`.)
 
 ---
 

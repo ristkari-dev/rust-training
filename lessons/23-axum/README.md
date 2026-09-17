@@ -53,7 +53,9 @@ same way). `{name}` is a path parameter. That braces syntax is new in
 axum 0.8 — older examples online use `:name`, which 0.8 rejects: the code
 compiles, but panics as soon as the route is added. The `: Router`
 annotation names the finished, ready-to-serve router type — the same one
-this lesson's `router()` function returns.
+this lesson's `router()` function returns — and it's required here:
+without it, nothing tells the compiler which state type this router has
+("type annotations needed").
 
 ### Extractors — `Path`
 
