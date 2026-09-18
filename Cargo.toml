@@ -26,6 +26,7 @@ module_name_repetitions = "allow"
 anyhow = "1"
 axum = "0.8"
 clap = { version = "4", features = ["derive"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 thiserror = "2"
 tokio = { version = "1", features = ["rt", "macros"] }
 toml_edit = "0.22"
