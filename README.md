@@ -11,6 +11,8 @@ patterns.
 - The toolchain pinned in `rust-toolchain.toml` (auto-installed by
   `rustup` the first time you run `cargo` in this directory)
 - `make`
+- A C compiler (`sqlx` builds SQLite from source; Xcode command line
+  tools on macOS, `build-essential` on Debian/Ubuntu)
 
 ## Quick start
 
