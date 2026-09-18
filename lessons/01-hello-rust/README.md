@@ -24,7 +24,7 @@ rustc --version
 cargo --version
 ```
 
-You should see version `1.85` or newer.
+You should see version `1.98` or newer.
 
 ### The shape of a program
 

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # --- Stage 1: build the static dist/ ---
-FROM rust:1.85-slim-bookworm AS builder
+FROM rust:1.98-slim-bookworm AS builder
 WORKDIR /src
 COPY . .
 RUN cargo build --release --package build-index \
