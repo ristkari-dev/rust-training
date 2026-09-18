@@ -89,6 +89,14 @@ therefore raises the floor instead:
 
 - `rust-toolchain.toml`: `channel = "1.85"` → `channel = "1.98"`
 - root `Cargo.toml`: `rust-version = "1.85"` → `rust-version = "1.98"`
+- `clippy.toml`: `msrv = "1.85"` → `msrv = "1.98"`. Without it clippy
+  warns "the MSRV in `clippy.toml` and `Cargo.toml` differ" on every
+  crate and keeps gating its lints on 1.85 — verified during planning
+- `deploy/Dockerfile`: `FROM rust:1.85-slim-bookworm` →
+  `FROM rust:1.98-slim-bookworm`, since `build-index` inherits the
+  workspace `rust-version`
+- `lessons/01-hello-rust/README.md`: "You should see version `1.85` or
+  newer" → `1.98`, the only lesson text naming a toolchain version
 
 Verified on 2026-09-18 against the repo at `093e3bf`, toolchain
 `rustc 1.98.1 (48a229cea 2026-09-01)`: `cargo clippy --workspace
@@ -115,8 +123,10 @@ feature, so no system library and no server are needed), `migrate` and
 `macros` (together, what `sqlx::migrate!()` needs).
 
 `thiserror` and `tokio` are already workspace dependencies. Resolved
-during design: sqlx 0.8.6, libsqlite3-sys 0.30.1, ~180 packages, ~115
-crates compiled, about 15-20 seconds cold on a developer machine.
+during design: sqlx 0.8.6, libsqlite3-sys 0.30.1, ~130 newly locked
+packages, 115 crates compiled, about 15-20 seconds with a warm
+crates.io cache on a developer machine (budget a minute or two on a cold
+one).
 
 **This is the first lesson whose dependency compiles C.** The `bundled`
 SQLite build needs a working `cc` on the machine. GitHub's
@@ -191,7 +201,9 @@ lessons 18 and 23 also paid.
        .await?;
    ```
    `FromRow` maps columns onto fields by name; `query_scalar` pulls a
-   single value. A SQLite `INTEGER` is an `i64` in Rust. (There is also
+   single value (and needs a type annotation). A SQLite `INTEGER` is an
+   `i64` in Rust — a narrower `i32` field still compiles, but a value
+   that doesn't fit fails when the row comes back. (There is also
    `sqlx::query!`, checked against a real database at compile time — it
    needs a `DATABASE_URL` while building, so this course uses the
    runtime API.)
@@ -267,10 +279,11 @@ fn main() {
 }
 ```
 
-`migrate!()` embeds the `.sql` files at compile time, but a proc macro
-cannot register a rebuild trigger. Without this file, editing or adding
-a migration leaves the compiled-in copy stale and the change silently
-does nothing.
+`migrate!()` emits an `include_str!` per migration, so *edits* to an
+existing `.sql` file already trigger a rebuild on their own — verified
+during design. What the `build.rs` adds is the directory: without it a
+newly *added* migration is not noticed, and the compiled-in set stays
+stale. Three lines to keep "add a new file" working is worth it.
 
 ### Migrations (both crates)
 
@@ -286,12 +299,24 @@ CREATE TABLE accounts (
 `migrations/0002_add_balance.sql`:
 
 ```sql
-ALTER TABLE accounts ADD COLUMN balance INTEGER NOT NULL DEFAULT 0;
+-- The 1000 cap is a teaching device: a rule the database enforces on
+-- every write, so a transfer can fail on its SECOND update, after the
+-- first has already moved money. That is why `transfer` needs a
+-- transaction. Migrations are append-only: to change this, add 0003.
+ALTER TABLE accounts ADD COLUMN balance INTEGER NOT NULL DEFAULT 0 CHECK (balance <= 1000);
 ```
 
 Two files, not one, so the ordered-history idea is visible: the schema
-*grew*, and the second file is how you add a column without touching
-the first.
+*grew*, and the second file is how you add a column without touching the
+first.
+
+The `CHECK (balance <= 1000)` is what makes the main exercise *require*
+a transaction: it lets one of the two UPDATEs fail after the other has
+already moved money, which no amount of checking up front avoids. The
+cap alone is not enough — it must be paired with the two rollback tests
+below, one per statement order. Without them, the naive
+no-transaction implementations pass the whole suite (verified during
+design).
 
 ### Exercise stub (`exercises/src/lib.rs`)
 
@@ -330,8 +355,9 @@ pub enum TransferError {
 
 /// Open a fresh in-memory database and run the migrations.
 ///
-/// One connection means one database — and it turns "I read through the
-/// pool while my transaction was open" from a hang into a quick error.
+/// The pool is capped at one connection: SQLite takes one writer at a
+/// time, and the cap turns a statement sent to the pool during an open
+/// transaction into a quick `PoolTimedOut` instead of a hang.
 pub async fn connect() -> Result<SqlitePool, sqlx::Error> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -349,6 +375,8 @@ pub async fn all_accounts(pool: &SqlitePool) -> Result<Vec<Account>, sqlx::Error
         .await
 }
 
+// The `_` prefixes keep the unfinished stubs compiling (unused variables
+// are errors in this course). Rename them when you write the body.
 pub async fn insert_account(
     _pool: &SqlitePool,
     _name: &str,
@@ -357,6 +385,9 @@ pub async fn insert_account(
     todo!("INSERT the account, then return its new row id")
 }
 
+// `transfer` does not validate `amount`: the database's CHECK is the only
+// guard. A negative amount is a legal call, and a transfer the database
+// rejects must leave both balances unchanged.
 pub async fn transfer(
     _pool: &SqlitePool,
     _from: i64,
@@ -508,49 +539,100 @@ async fn main_transfer_commits() {
     let pool = seeded().await;
     transfer(&pool, 1, 2, 30).await.unwrap();
     let rows = all_accounts(&pool).await.unwrap();
-    assert_eq!(rows[0].balance, 70);
-    assert_eq!(rows[1].balance, 80);
+    assert_eq!(
+        rows[0].balance, 70,
+        "the sender should have been debited - if nothing moved, did you tx.commit()?"
+    );
+    assert_eq!(
+        rows[1].balance, 80,
+        "the receiver should have been credited"
+    );
 }
 
 #[tokio::test]
-async fn main_transfer_whole_balance_commits() {
-    let pool = seeded().await;
-    transfer(&pool, 1, 2, 100).await.unwrap();
-    let rows = all_accounts(&pool).await.unwrap();
-    assert_eq!(rows[0].balance, 0);
-    assert_eq!(rows[1].balance, 150);
-}
-
-#[tokio::test]
-async fn main_overdraft_is_rejected() {
+async fn main_overdraft_is_rejected_and_writes_nothing() {
     let pool = seeded().await;
     let err = transfer(&pool, 1, 2, 500).await.unwrap_err();
-    assert!(matches!(
-        err,
+    match err {
         TransferError::InsufficientFunds {
-            id: 1,
-            balance: 100,
-            amount: 500
-        }
-    ));
-}
-
-#[tokio::test]
-async fn main_overdraft_rolls_everything_back() {
-    let pool = seeded().await;
-    assert!(transfer(&pool, 1, 2, 500).await.is_err());
+            id,
+            balance,
+            amount,
+        } => assert_eq!(
+            (id, balance, amount),
+            (1, 100, 500),
+            "report the sender's balance BEFORE the transfer"
+        ),
+        other @ TransferError::Database(_) => panic!("expected InsufficientFunds, got {other:?}"),
+    }
     let rows = all_accounts(&pool).await.unwrap();
     assert_eq!(rows[0].balance, 100, "the sender must be untouched");
     assert_eq!(rows[1].balance, 50, "the receiver must be untouched too");
+}
+
+#[tokio::test]
+async fn main_failed_credit_rolls_back_the_debit() {
+    let pool = connect().await.unwrap();
+    insert_account(&pool, "alice", 100).await.unwrap();
+    // "vault" sits at the 1000 cap from migration 0002, so crediting it
+    // anything fails - after the sender has already been debited.
+    insert_account(&pool, "vault", 1000).await.unwrap();
+    let err = transfer(&pool, 1, 2, 10).await.unwrap_err();
+    let rows = all_accounts(&pool).await.unwrap();
+    assert_eq!(
+        rows[0].balance, 100,
+        "the credit failed with `{err}` - the debit must be rolled back too"
+    );
+    assert_eq!(rows[1].balance, 1000);
+}
+
+#[tokio::test]
+async fn main_rejected_write_leaves_both_accounts_untouched() {
+    let pool = seeded().await;
+    // A negative amount makes the SENDER's update the one the cap rejects
+    // (100 - -2000 = 2100). Debit first and it fails before anything moved;
+    // credit first and the receiver is already at -1950 when it fails.
+    let err = transfer(&pool, 1, 2, -2000).await.unwrap_err();
+    let rows = all_accounts(&pool).await.unwrap();
+    assert_eq!(rows[0].balance, 100, "the sender must be untouched");
+    assert_eq!(
+        rows[1].balance, 50,
+        "the transfer failed with `{err}` - the receiver must be untouched too"
+    );
 }
 ```
 
 **Eight tests total** (four warm-up + four main), all `#[tokio::test]`,
 each opening its own in-memory database through `connect()` — no shared
-state, no external service, deterministic. `main_overdraft_rolls_everything_back`
-is the load-bearing one: it is the only test that fails if a student
-writes `.execute(pool)` instead of `.execute(&mut *tx)`, and it fails
-loudly, with `left: -400, right: 100`.
+state, no external service, deterministic.
+
+Two of the main tests are load-bearing, and between them they catch both
+naive statement orders. `main_failed_credit_rolls_back_the_debit` puts
+the receiver at the 1000 cap, so the *credit* fails after the debit has
+run — a debit-first implementation with no transaction fails it with
+`left: 90, right: 100`. `main_rejected_write_leaves_both_accounts_untouched`
+passes a negative amount, so the sender's own update is what the cap
+rejects; in the reference order it fails before anything moved, and in
+the credit-first order it fails after the receiver was credited, failing
+that implementation with `left: -1950, right: 50`. Both messages quote
+the database's own `CHECK constraint failed: balance <= 1000`.
+
+What no test here can do is *prove* a transaction was used: an
+implementation that reads both balances first and re-checks the
+database's rules in Rust before writing passes all eight (verified
+during design). The README says so plainly, and makes the case for the
+transaction on its merits — a hand-copied rule goes stale when the
+schema changes, and another writer can move the row between the check
+and the write.
+
+The other mistake — routing a statement to `&pool` instead of
+`&mut *tx` — does not corrupt data here, because `connect()` caps the
+pool at one connection: the open transaction holds it, so the stray
+statement waits out `acquire_timeout` and fails with
+`Database(PoolTimedOut)` after two seconds. That surfaces in
+`main_transfer_commits` and
+`main_overdraft_is_rejected_and_writes_nothing`, and the README names the
+symptom so a student can decode it.
 
 The four main tests seed through `insert_account`, so a student who has
 not finished the warm-up sees all eight fail rather than four. Lesson 22
@@ -668,8 +750,10 @@ an allow, and report it.
 
 ## Done criteria
 
-- `rust-toolchain.toml` and root `Cargo.toml` pin 1.98; `make ci` is
-  green on lessons 01-23 with no other change
+- `rust-toolchain.toml`, root `Cargo.toml`, `clippy.toml`,
+  `deploy/Dockerfile` and `lessons/01-hello-rust/README.md` all name
+  1.98; `make ci` is green on lessons 01-23, with no clippy MSRV warning
+  and no lesson source change
 - `lessons/24-persistence/` exists with the four-part structure, plus
   `build.rs` and `migrations/` in both crates
 - Root `Cargo.toml` `[workspace.dependencies]` includes the `sqlx` entry
