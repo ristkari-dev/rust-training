@@ -229,8 +229,9 @@ If that balance is negative, `tx.rollback().await?` and return
 — the `+ amount` puts back what you just debited, so the error reports
 what the sender had *before* the transfer. Otherwise `tx.commit().await?`.
 
-`transfer` does not validate `amount` — the database's `CHECK` is the
-only guard, and a negative amount is a legal call. Two tests make the
+`transfer` doesn't reject odd values of `amount` up front — a negative
+amount is a legal call. You check the sender's balance yourself; the
+database's `CHECK` catches the rest. Two tests make the
 database reject one of the updates: one transfers into an account
 already at the 1000 cap, and one passes a negative amount, which makes
 the sender's own update break the cap. You don't need to handle either

@@ -58,9 +58,10 @@ pub async fn insert_account(
     todo!("INSERT the account, then return its new row id")
 }
 
-// `transfer` does not validate `amount`: the database's CHECK is the only
-// guard. A negative amount is a legal call, and a transfer the database
-// rejects must leave both balances unchanged.
+// `transfer` doesn't reject odd values of `amount` up front: a negative
+// amount is a legal call. It checks the sender's balance itself, and
+// leaves the rest to the database's CHECK — either way, a transfer the
+// database rejects must leave both balances unchanged.
 pub async fn transfer(
     _pool: &SqlitePool,
     _from: i64,
