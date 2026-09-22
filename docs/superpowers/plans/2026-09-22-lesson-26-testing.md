@@ -308,9 +308,8 @@ fn warmup_all_four_tests_are_still_there() {
         src.contains("#[cfg(test)]"),
         "the warm-up unit test module is gone - deleting a test is not passing it"
     );
-    assert_eq!(
-        src.matches("/// ```").count(),
-        4,
+    assert!(
+        src.matches("/// ```").count() >= 4,
         "both doc-test examples on `encode` must stay - deleting a test is not passing it"
     );
 }
@@ -547,9 +546,8 @@ fn warmup_all_four_tests_are_still_there() {
         src.contains("#[cfg(test)]"),
         "the warm-up unit test module is gone - deleting a test is not passing it"
     );
-    assert_eq!(
-        src.matches("/// ```").count(),
-        4,
+    assert!(
+        src.matches("/// ```").count() >= 4,
         "both doc-test examples on `encode` must stay - deleting a test is not passing it"
     );
 }
@@ -689,8 +687,9 @@ created.
 
 ### Doc tests — documentation that cannot rot
 
-Any ```` ``` ```` block in a `///` comment is compiled and run by `cargo
-test`:
+Any Rust ```` ``` ```` block in a `///` comment is compiled and run by
+`cargo test` (unless you tell it otherwise — see the fence attributes
+below):
 
 ```rust
 /// Run-length encode: every run becomes `<count><char>`.
@@ -719,8 +718,9 @@ rot.
 
 Two details worth knowing. A line starting with `# ` — hash, then a space —
 runs but is hidden from the rendered page, so setup does not clutter the
-example; write `##` at the start of a line when you want a literal `#`,
-which is how an attribute such as `#[derive(Debug)]` stays visible. And the
+example; write `##` at the start of a line when the rendered line must
+begin with a literal `#`. An attribute needs no escape — the hiding rule
+requires the space, so `#[derive(Debug)]` shows as written. And the
 fence takes attributes: ```` ```no_run ```` compiles without
 running, ```` ```ignore ```` does neither, and ```` ```should_panic ````
 expects the example to panic.
@@ -745,15 +745,18 @@ binary that fails**. If your unit tests are red you will not even see
 whether the doc tests pass. Two ways out:
 
 ```bash
-cargo test --no-fail-fast     # run every binary, report all failures
-cargo test --lib              # just the #[cfg(test)] mod tests
-cargo test --test exercise    # just tests/exercise.rs
-cargo test --doc              # just the examples in doc comments
-cargo test run_len            # any test whose name contains "run_len"
+cargo test -p testing-exercises --no-fail-fast   # all of them, all failures
+cargo test -p testing-exercises --lib            # the #[cfg(test)] mod tests
+cargo test -p testing-exercises --test exercise  # tests/exercise.rs
+cargo test -p testing-exercises --doc            # the doc-comment examples
+cargo test -p testing-exercises encode           # names containing "encode"
 ```
 
-That last one has a wrinkle: a bare name filter skips doc tests entirely.
-Use `cargo test --doc run_len` to filter those.
+Note the `-p`: without it you are asking the whole workspace, and this
+crate is not part of what `cargo test` picks by default — you would get a
+green bar belonging to somebody else's code. That last command has a
+wrinkle too: a bare name filter skips doc tests entirely, so use
+`cargo test -p testing-exercises --doc encode` to filter those.
 
 Also useful: `#[should_panic]` for a test that must panic, `#[ignore]` for
 one that only runs when asked (`cargo test -- --ignored`), and

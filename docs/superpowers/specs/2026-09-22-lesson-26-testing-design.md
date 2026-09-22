@@ -45,7 +45,8 @@ and what it actually does to a normal build; `use super::*;` in a unit test
 module; integration tests as a *separate crate* that sees only the public
 API; doc tests — how they are compiled and run, that they need the crate
 name in a `use`, and that a leading `# ` (hash, space) hides a setup line
-from the rendered docs while `##` renders a literal `#`; reading
+from the rendered docs while `##` renders a literal `#` (an attribute needs no escape, since
+the hiding rule requires the space); reading
 `cargo test` output as three separate result blocks; the limits of
 example-based tests; property testing with `proptest` — writing a strategy,
 `prop_assert_eq!`, and reading a shrunk counterexample; `[dev-dependencies]`
@@ -476,9 +477,8 @@ fn warmup_all_four_tests_are_still_there() {
         src.contains("#[cfg(test)]"),
         "the warm-up unit test module is gone - deleting a test is not passing it"
     );
-    assert_eq!(
-        src.matches("/// ```").count(),
-        4,
+    assert!(
+        src.matches("/// ```").count() >= 4,
         "both doc-test examples on `encode` must stay - deleting a test is not passing it"
     );
 }

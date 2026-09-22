@@ -37,9 +37,8 @@ fn warmup_all_four_tests_are_still_there() {
         src.contains("#[cfg(test)]"),
         "the warm-up unit test module is gone - deleting a test is not passing it"
     );
-    assert_eq!(
-        src.matches("/// ```").count(),
-        4,
+    assert!(
+        src.matches("/// ```").count() >= 4,
         "both doc-test examples on `encode` must stay - deleting a test is not passing it"
     );
 }
