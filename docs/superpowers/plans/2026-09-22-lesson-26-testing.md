@@ -360,14 +360,18 @@ Expected: pass (the file does not compile, which is what "broken" asserts).
 
 - [ ] **Step 7: Verify the compile-fail file compiles once fixed**
 
+Run this as one block — the shell variable must survive between commands, and no temp file is needed:
+
 ```bash
-cp lessons/26-testing/exercises/compile_fails/26-cfg-test-not-compiled.rs /tmp/cf26.bak
-sed -i '' '/^#\[cfg(test)\]$/d' lessons/26-testing/exercises/compile_fails/26-cfg-test-not-compiled.rs
+CF=lessons/26-testing/exercises/compile_fails/26-cfg-test-not-compiled.rs
+ORIG=$(cat "$CF")
+sed -i '' '/^#\[cfg(test)\]$/d' "$CF"
 cargo run --package compile-fails -- --expect compiles lessons/26-testing
-cp /tmp/cf26.bak lessons/26-testing/exercises/compile_fails/26-cfg-test-not-compiled.rs
+printf '%s\n' "$ORIG" > "$CF"
+git diff --stat lessons/26-testing/exercises/compile_fails/
 ```
 
-Expected: the middle command passes. The last command restores the broken file — verify with `git diff --stat lessons/26-testing/exercises/compile_fails/` that it reports no change before committing.
+Expected: the `--expect compiles` run passes (the file compiles once the gate is gone), and the final `git diff --stat` prints **nothing** — the restore was exact. `sed -i ''` is BSD/macOS syntax and the pattern matches exactly one line. If `git diff --stat` shows a change, STOP and restore the file from the plan text above before committing.
 
 - [ ] **Step 8: Verify no proptest droppings**
 
@@ -1056,13 +1060,17 @@ make ci
 
 Expected: exit 0. This runs `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all --check`, `cargo build --workspace --all-targets`, `cargo test` (tools + solutions, including the solutions' unit and doc tests) and `compile-fails --expect broken lessons`.
 
-- [ ] **Step 2: Verify the student path from a clean tree**
+- [ ] **Step 2: Verify the student path from a clean tree, twice**
+
+Run it twice in a row. The second run is not redundant: it is what proves proptest's failure persistence is really off, which is the spec's Done criterion 5.
 
 ```bash
 make verify LESSON=26-testing 2>&1 | tail -20
+make verify LESSON=26-testing 2>&1 | tail -5
+git status --porcelain
 ```
 
-Expected: FAILS — this is the shipped exercise and it must be red. Confirm the failure is test failures, not compile errors.
+Expected: both runs FAIL — this is the shipped exercise and it must be red. Confirm the failure is test failures, not compile errors. `git status --porcelain` must print nothing: a `.proptest-regressions` file appearing here means `failure_persistence: None` was dropped from the test config.
 
 - [ ] **Step 3: Verify the solutions path passes all 8**
 
@@ -1085,16 +1093,33 @@ Expected: no output from either.
 
 Follow superpowers:finishing-a-development-branch. Merge the branch into `main`, then re-run `make ci` on the merged result. If it fails, STOP — do not push.
 
-- [ ] **Step 6: Push and watch**
+- [ ] **Step 6: Push**
 
 ```bash
-git push origin main
-gh run watch
+git push
 ```
 
-Expected: CI (stable + beta) and Deploy both conclude `success`.
+Expected: push succeeds. The CI cache key hashes `**/Cargo.toml`, which changed when proptest was added, so the first run refetches on both the stable and beta legs.
 
-- [ ] **Step 7: Verify live**
+- [ ] **Step 7: Watch CI and Deploy**
+
+List the runs for the pushed commit. If fewer than two rows (`CI` and `Deploy`) appear, wait ~10 seconds and re-run it:
+
+```bash
+gh run list --commit "$(git rev-parse HEAD)" --json databaseId,workflowName,status
+```
+
+Then wait on each, using the `databaseId` values from that output. `gh run watch` takes the run id as a positional argument — called bare it opens an interactive picker and will hang or fail in a non-interactive shell, and without `--exit-status` it cannot signal failure:
+
+```bash
+gh run watch <CI databaseId> --exit-status
+gh run watch <Deploy databaseId> --exit-status
+gh run list --commit "$(git rev-parse HEAD)" --json workflowName,conclusion
+```
+
+Expected: both `gh run watch` commands exit 0, and both `CI` and `Deploy` show `"conclusion":"success"`.
+
+- [ ] **Step 8: Verify live**
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://rust.ristkari.dev/

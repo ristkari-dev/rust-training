@@ -529,8 +529,9 @@ Exercises:
 ## Done criteria
 
 1. `make ci` is green.
-2. `make verify LESSON=26-testing` against `solutions/` passes 8 tests: 2
-   unit, 4 integration (one of them the property), 2 doc.
+2. `cargo test --manifest-path lessons/26-testing/solutions/Cargo.toml`
+   passes 8 tests: 2 unit, 4 integration (one of them the property), 2 doc.
+   (Not `make verify` — that target is hardcoded to `exercises/`.)
 3. `make verify LESSON=26-testing` against the shipped `exercises/` fails
    all 8 and compiles cleanly — no lint errors, no build errors, only test
    failures.
