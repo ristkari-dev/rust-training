@@ -904,6 +904,8 @@ constant and put the values beside it, as named fields:
 use tracing::info;
 
 info!(path, status, elapsed_ms, "request finished");
+// as testkit::capture records it (a plain .json() subscriber also emits
+// a "timestamp"):
 // {"level":"INFO","fields":{"message":"request finished","path":"/health",
 //  "status":200,"elapsed_ms":3},"target":"observability_exercises"}
 ```
@@ -913,7 +915,7 @@ message always comes **last** — fields first, message at the end. Put it
 first and rustc offers to add `{}` placeholders for your fields; that
 suggestion is the anti-pattern this lesson exists to prevent. The
 interpolated version — `info!("request {path} finished with {status}")` —
-puts the same characters on your screen and throws the structure away: you
+reads just as well and throws the structure away: you
 can grep it, but you cannot ask "how many requests returned 500 on
 `/orders` last hour?" without parsing English back into data. Fields are
 what make that question answerable.
@@ -961,8 +963,8 @@ unchanged, emits lines like `DEBUG sqlx::query: summary="INSERT INTO
 accounts (name, …" rows_affected=1 elapsed=52.041µs …` (abridged — sqlx
 also records `db.statement`, `rows_returned` and `elapsed_secs`). You wrote none of that.
 Note the level: sqlx logs queries at DEBUG, so the default INFO subscriber
-hides them — raise the level as above, or filter with `EnvFilter` and
-`RUST_LOG=sqlx=debug`.
+hides them — raise the level as above, or turn on `tracing-subscriber`'s
+`env-filter` feature and filter with `EnvFilter` and `RUST_LOG=sqlx=debug`.
 
 ### Testing what you log
 
@@ -1011,7 +1013,7 @@ impl Counter {
 ```
 
 `fetch_add` mutates through `&self`, so eight threads can count at once
-(Lesson 16's `Send`/`Sync` paying off). `Ordering::Relaxed` is right here
+with no `Mutex` (Lesson 16's `Send`/`Sync` paying off). `Ordering::Relaxed` is right here
 because these counters guard nothing else — they only need to not lose
 increments. What a scraper reads from a `/metrics` endpoint is three lines per
 counter — a `# HELP` description, a `# TYPE` (`counter` means it only ever
@@ -1155,7 +1157,7 @@ info!(path, status, elapsed_ms, "request finished");
 
 The message is a constant; the values are named fields. `info!(path, ...)` is shorthand for `info!(path = path, ...)`.
 
-Compare `info!("request {path} finished with {status}")` — the same line for a human to read, but nothing can filter it by `status` afterwards.
+Compare `info!("request {path} finished with {status}")` — just as readable for a human, but nothing can filter it by `status` afterwards.
 
 ---
 

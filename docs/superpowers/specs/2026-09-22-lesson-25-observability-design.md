@@ -110,7 +110,7 @@ axum.
    info!(path, status, elapsed_ms, "request finished");
    ```
    The message is a constant; the values are named fields. Compare
-   `info!("request {path} finished")` — same characters on screen, but
+   `info!("request {path} finished with {status}")` — just as readable, but
    nothing can filter it by `status` afterwards.
 4. **Levels.** `error!`, `warn!`, `info!`, `debug!`, `trace!`. Levels are
    for the *reader's* filter, not for your feelings: `error!` means someone
