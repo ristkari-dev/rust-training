@@ -247,10 +247,10 @@ fn run_len(input: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    // Add `use super::*;` yourself. A unit test module can reach its
-    // parent's private items, but only once they are in scope — and the stub
-    // cannot ship with the import, because an unused import is a compile
-    // error in this course.
+    // Add `use super::*;` in the same edit as your first assertion: on its
+    // own it is an unused import, which is a compile error in this course.
+    // It is a convenience, not the access - this module can already see its
+    // parent's private items, and `super::run_len(..)` works without it.
 
     #[test]
     fn warmup_run_len_counts_the_leading_run() {
