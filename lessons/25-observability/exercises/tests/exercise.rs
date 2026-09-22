@@ -36,6 +36,10 @@ fn warmup_message_is_constant() {
         one.first().expect("no event recorded for /health"),
         two.first().expect("no event recorded for /orders"),
     );
+    assert!(
+        !one.message.is_empty(),
+        "the event needs a message - a constant one, with the values in fields"
+    );
     assert_eq!(
         one.message, two.message,
         "the message must not change with the values - put them in fields, not in the text"

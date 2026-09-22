@@ -240,6 +240,9 @@ The given capture harness. Write EXACTLY as shown:
 //! not expected to follow: `Buffer` is a `Vec<u8>` behind an `Arc<Mutex<_>>`
 //! that the subscriber writes into, and `parse` turns each JSON line back
 //! into an `Event`.
+//!
+//! The subscriber is set for *this thread*, so events logged from threads
+//! you spawn inside the closure are not captured.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -432,6 +435,10 @@ fn warmup_message_is_constant() {
     let (one, two) = (
         one.first().expect("no event recorded for /health"),
         two.first().expect("no event recorded for /orders"),
+    );
+    assert!(
+        !one.message.is_empty(),
+        "the event needs a message - a constant one, with the values in fields"
     );
     assert_eq!(
         one.message, two.message,
@@ -740,6 +747,10 @@ fn warmup_message_is_constant() {
         one.first().expect("no event recorded for /health"),
         two.first().expect("no event recorded for /orders"),
     );
+    assert!(
+        !one.message.is_empty(),
+        "the event needs a message - a constant one, with the values in fields"
+    );
     assert_eq!(
         one.message, two.message,
         "the message must not change with the values - put them in fields, not in the text"
@@ -914,11 +925,11 @@ info!(path, status, elapsed_ms, "request finished");
 message always comes **last** — fields first, message at the end. Put it
 first and rustc offers to add `{}` placeholders for your fields; that
 suggestion is the anti-pattern this lesson exists to prevent. The
-interpolated version — `info!("request {path} finished with {status}")` —
-reads just as well and throws the structure away: you
-can grep it, but you cannot ask "how many requests returned 500 on
-`/orders` last hour?" without parsing English back into data. Fields are
-what make that question answerable.
+interpolated version — `info!("request {path} finished with {status}")`
+— reads just as well and throws the structure away: you can grep it, but
+you cannot ask "how many requests returned 500 on `/orders` last hour?"
+without parsing English back into data. Fields are what make that question
+answerable.
 
 ### Levels and spans
 
@@ -938,8 +949,8 @@ fn handle(path: &str) {
 
 `#[instrument]` opens a span for the whole function and records its
 arguments as fields. This lesson doesn't exercise spans; add
-`#[tracing::instrument]` to a function of your own and the subscriber
-starts printing `handle{path=…}` around everything it logs.
+`#[tracing::instrument]` to a function of your own and the subscriber starts
+printing `handle{path=…}` around everything it logs.
 
 ### Subscribers — what records, and where
 
@@ -956,15 +967,16 @@ fn main() {
 }
 ```
 
-The subscriber decides the format, the destination and the minimum level.
-It is also where you get other crates' telemetry for free: install one, and
+The subscriber decides the format, the destination and the minimum level. It
+is also where you get other crates' telemetry for free: install one, and
 every instrumented dependency starts talking. Lesson 24's database layer,
 unchanged, emits lines like `DEBUG sqlx::query: summary="INSERT INTO
-accounts (name, …" rows_affected=1 elapsed=52.041µs …` (abridged — sqlx
-also records `db.statement`, `rows_returned` and `elapsed_secs`). You wrote none of that.
-Note the level: sqlx logs queries at DEBUG, so the default INFO subscriber
-hides them — raise the level as above, or turn on `tracing-subscriber`'s
-`env-filter` feature and filter with `EnvFilter` and `RUST_LOG=sqlx=debug`.
+accounts (name, …" rows_affected=1 elapsed=52.041µs …` (abridged —
+sqlx also records `db.statement`, `rows_returned` and `elapsed_secs`). You
+wrote none of that. Note the level: sqlx logs queries at DEBUG, so the
+default INFO subscriber hides them — raise the level as above, or turn on
+`tracing-subscriber`'s `env-filter` feature and filter with `EnvFilter` and
+`RUST_LOG=sqlx=debug`.
 
 ### Testing what you log
 
@@ -986,8 +998,8 @@ run.
 
 The scoping is per *thread*: `with_default` sets the subscriber for the
 thread that calls it, and `cargo test` gives each test its own thread —
-that is what makes parallel tests independent. The flip side: `capture`
-does not see events logged from threads you spawn inside the closure.
+that is what makes parallel tests independent. The flip side: `capture` does
+not see events logged from threads you spawn inside the closure.
 
 ### Metrics — counters you expose
 
@@ -996,9 +1008,9 @@ long, right now.
 
 `AtomicU64` is a `u64` from `std::sync::atomic` that several threads may
 touch at once. You don't read and write it with `=`; you call methods —
-`fetch_add(n, ordering)` adds and returns the previous value, `load(ordering)`
-reads it — and each one is indivisible, so two threads incrementing at the
-same moment cannot lose an increment between them:
+`fetch_add(n, ordering)` adds and returns the previous value,
+`load(ordering)` reads it — and each one is indivisible, so two threads
+incrementing at the same moment cannot lose an increment between them:
 
 ```rust
 pub struct Counter {
@@ -1012,12 +1024,12 @@ impl Counter {
 }
 ```
 
-`fetch_add` mutates through `&self`, so eight threads can count at once
-with no `Mutex` (Lesson 16's `Send`/`Sync` paying off). `Ordering::Relaxed` is right here
-because these counters guard nothing else — they only need to not lose
-increments. What a scraper reads from a `/metrics` endpoint is three lines per
-counter — a `# HELP` description, a `# TYPE` (`counter` means it only ever
-goes up), then the name and the value:
+`fetch_add` mutates through `&self`, so eight threads can count at once with
+no `Mutex` (Lesson 16's `Send`/`Sync` paying off). `Ordering::Relaxed` is
+right here because these counters guard nothing else — they only need to
+not lose increments. What a scraper reads from a `/metrics` endpoint is
+three lines per counter — a `# HELP` description, a `# TYPE` (`counter`
+means it only ever goes up), then the name and the value:
 
 ```text
 # HELP requests_total Requests served.
@@ -1025,17 +1037,17 @@ goes up), then the name and the value:
 requests_total 2
 ```
 
-It reads that every few seconds and keeps the numbers over time; that is
-all Prometheus is, at the bottom. Real services reach for the `metrics`
-crate or OpenTelemetry rather than hand-rolling — this lesson hand-rolls so
-the mechanics stay visible: one `AtomicU64`, no extra dependency.
+It reads that every few seconds and keeps the numbers over time; that is all
+Prometheus is, at the bottom. Real services reach for the `metrics` crate or
+OpenTelemetry rather than hand-rolling — this lesson hand-rolls so the
+mechanics stay visible: one `AtomicU64`, no extra dependency.
 
 ## Exercises
 
 ### Warm-up: `record_request`
 
-Implement `record_request` so it emits exactly one event, with the values
-as named fields:
+Implement `record_request` so it emits exactly one event, with the values as
+named fields:
 
 ```rust
 pub fn record_request(_path: &str, _status: u64, _elapsed_ms: u64) {
@@ -1047,9 +1059,9 @@ The stub's parameters start with `_` because this course's lints make an
 unused variable a compile error — rename them in the same edit where you
 replace `todo!()`. You add `use tracing::info;` yourself too (or call
 `tracing::info!` in full, as in the Events section above); rustc will only
-say `cannot find macro`, with no suggestion. One test calls the function twice with different values
-and asserts the two messages are equal: an interpolated message fails it,
-which is the whole point.
+say `cannot find macro`, with no suggestion. One test calls the function
+twice with different values and asserts the two messages are equal: an
+interpolated message fails it, which is the whole point.
 
 ### Main: `Metrics::record`
 
@@ -1063,22 +1075,22 @@ pub fn record(&self, _status: u64) {
 ```
 
 Note the signature: `&self`, not `&mut self` — see the Metrics note above.
-One of the tests counts into one `Arc<Metrics>` from eight threads at once. If you write `&mut self` instead, every error rustc prints will
-point at `tests/exercise.rs` rather than your code, and several will
-suggest adding `mut` to a binding in the test — don't: the tests are right,
-the signature is the thing to change. `Metrics`, its fields and
-`render_prometheus` are given; read `render_prometheus` to see what your
-counters turn into.
+One of the tests counts into one `Arc<Metrics>` from eight threads at once.
+If you write `&mut self` instead, every error rustc prints will point at
+`tests/exercise.rs` rather than your code, and several will suggest adding
+`mut` to a binding in the test — don't: the tests are right, the signature
+is the thing to change. `Metrics`, its fields and `render_prometheus` are
+given; read `render_prometheus` to see what your counters turn into.
 
 ### Compile-fail
 
 `exercises/compile_fails/25-span-guard-temporary.rs` enters a span in the
 same expression that creates it, so the span dies at the end of the
-statement while the guard still borrows it (E0716 — temporary value dropped
-while borrowed). Fix it by binding the span to a name first; rustc's own
-suggestion shows the shape. You can check this one without waiting for the
-tests:
-`cargo run --package compile-fails -- --expect compiles lessons/25-observability`.
+statement while the guard still borrows it (E0716 — temporary value
+dropped while borrowed). Fix it by binding the span to a name first; rustc's
+own suggestion shows the shape. You can check this one without waiting for
+the tests: `cargo run --package compile-fails -- --expect compiles
+lessons/25-observability`.
 
 ### Run
 
@@ -1193,7 +1205,7 @@ An event is a point; a **span** is an interval with a name and fields, and every
 ```rust
 tracing_subscriber::fmt().init();                 // human-readable, INFO and up
 tracing_subscriber::fmt().json().init();          // one JSON object per event
-tracing_subscriber::fmt().with_max_level(Level::DEBUG).init();  // lower the bar
+tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();  // lower the bar
 ```
 
 Nothing is recorded until something subscribes. With no subscriber the macros are **no-ops** — which is why a library can log freely and leave the choice to the binary.

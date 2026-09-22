@@ -199,6 +199,9 @@ other's output.
 //! not expected to follow: `Buffer` is a `Vec<u8>` behind an `Arc<Mutex<_>>`
 //! that the subscriber writes into, and `parse` turns each JSON line back
 //! into an `Event`.
+//!
+//! The subscriber is set for *this thread*, so events logged from threads
+//! you spawn inside the closure are not captured.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -418,6 +421,10 @@ fn warmup_message_is_constant() {
     let (one, two) = (
         one.first().expect("no event recorded for /health"),
         two.first().expect("no event recorded for /orders"),
+    );
+    assert!(
+        !one.message.is_empty(),
+        "the event needs a message - a constant one, with the values in fields"
     );
     assert_eq!(
         one.message, two.message,

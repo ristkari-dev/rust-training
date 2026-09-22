@@ -58,7 +58,7 @@ An event is a point; a **span** is an interval with a name and fields, and every
 ```rust
 tracing_subscriber::fmt().init();                 // human-readable, INFO and up
 tracing_subscriber::fmt().json().init();          // one JSON object per event
-tracing_subscriber::fmt().with_max_level(Level::DEBUG).init();  // lower the bar
+tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();  // lower the bar
 ```
 
 Nothing is recorded until something subscribes. With no subscriber the macros are **no-ops** — which is why a library can log freely and leave the choice to the binary.
