@@ -56,8 +56,8 @@ Out of scope (deferred or skipped): OpenTelemetry and distributed tracing;
 trace/span propagation across services; log shipping and aggregation
 backends; `EnvFilter` and `RUST_LOG` beyond a mention; writing a custom
 `Layer`; span sampling; metric labels and histograms; the `metrics` crate
-as a dependency (named as what production reaches for, and why its global
-recorder makes it awkward to teach here); async instrumentation beyond a
+as a dependency (named as what production reaches for, with the
+hand-rolling justified by keeping the counter's mechanics visible); async instrumentation beyond a
 mention. Observability is introduced as *structured events you can assert
 on, and counters you can expose*; shipping telemetry anywhere is out of
 band.
@@ -91,8 +91,10 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 ```
 
-No C toolchain and no external service: this lesson costs about 20 crates
-and a few seconds of build time.
+No C toolchain and no external service: this lesson locks 7 new packages
+(`tracing-subscriber` and its tree) and costs a few seconds of build time —
+`tracing` and `serde_json` are already in the workspace graph via sqlx and
+axum.
 
 ## Slide arc (10 slides)
 
@@ -121,11 +123,13 @@ and a few seconds of build time.
    ```
 6. **Subscribers.** Nothing is recorded until something subscribes —
    `tracing_subscriber::fmt().init()` prints human-readable lines,
-   `.json()` prints one JSON object per event. Without a subscriber the
-   macros are no-ops, which is why a library can log freely.
+   `.json()` prints one JSON object per event, and `.with_max_level(...)`
+   sets the bar (INFO by default). Without a subscriber the macros are
+   no-ops, which is why a library can log freely.
 7. **You get other crates' telemetry for free.** Install one subscriber and
-   every instrumented dependency starts talking. Lesson 24's database
-   layer, unchanged, emits:
+   every instrumented dependency starts talking — sqlx logs at DEBUG, so
+   the default INFO subscriber hides it. Lesson 24's database layer,
+   unchanged, emits (abridged):
    ```text
    DEBUG sqlx::query: summary="INSERT INTO accounts (name, …" rows_affected=1 elapsed=52.041µs
    ```
@@ -190,6 +194,11 @@ other's output.
 //! `capture` installs a JSON subscriber for the duration of one closure and
 //! nothing else — not globally — so tests stay independent even though
 //! `cargo test` runs them in parallel.
+//!
+//! You only ever call `capture`. The rest of this file is plumbing you are
+//! not expected to follow: `Buffer` is a `Vec<u8>` behind an `Arc<Mutex<_>>`
+//! that the subscriber writes into, and `parse` turns each JSON line back
+//! into an `Event`.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -273,7 +282,6 @@ pub fn capture<T>(f: impl FnOnce() -> T) -> (T, Vec<Event>) {
         .json()
         .with_writer(buffer.clone())
         .without_time()
-        .with_ansi(false)
         .with_max_level(tracing::Level::TRACE)
         .finish();
     let out = tracing::subscriber::with_default(subscriber, f);
@@ -282,9 +290,9 @@ pub fn capture<T>(f: impl FnOnce() -> T) -> (T, Vec<Event>) {
 }
 ```
 
-`.without_time()` and `.with_ansi(false)` are what make the captured output
-deterministic; `with_default` rather than `init()` is what makes it
-per-test. Returning `(T, Vec<Event>)` means a test asserts on the return
+`.without_time()` is what makes the captured output deterministic (the JSON
+formatter never emits colour, so there is nothing else to switch off);
+`with_default` rather than `init()` is what makes it per-test. Returning `(T, Vec<Event>)` means a test asserts on the return
 value and the log in one call, with no guard for a student to drop early.
 
 ### Exercise stub (`exercises/src/lib.rs`)
@@ -300,6 +308,9 @@ tests fail at runtime with the `todo!()` panic.
 //! `cargo test --manifest-path lessons/25-observability/exercises/Cargo.toml`
 //! passes. `testkit::capture` and `Metrics::render_prometheus` are given.
 //! The tests live in `tests/exercise.rs`.
+//!
+//! You add `use tracing::info;` yourself — the stub ships without it,
+//! because an unused import is a compile error in this course.
 
 pub mod testkit;
 
@@ -308,6 +319,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Record that a request finished.
 ///
 /// One event: a constant message, with the values as named fields.
+// The `_` prefixes keep the unfinished stubs compiling (unused variables
+// are errors in this course). Rename them when you write the body.
 pub fn record_request(_path: &str, _status: u64, _elapsed_ms: u64) {
     todo!("emit ONE event: a constant message, with the values as named fields")
 }
@@ -386,8 +399,14 @@ fn warmup_emits_exactly_one_event() {
 #[test]
 fn warmup_values_are_fields() {
     let ((), events) = capture(|| record_request("/health", 200, 3));
-    let event = &events[0];
-    assert_eq!(event.field("path"), Some("/health"));
+    let event = events
+        .first()
+        .expect("no event was recorded - record_request must emit one");
+    assert_eq!(
+        event.field("path"),
+        Some("/health"),
+        "None means the event carries no field called `path` - the values belong beside the message, not inside it"
+    );
     assert_eq!(event.field("status"), Some("200"));
     assert_eq!(event.field("elapsed_ms"), Some("3"));
 }
@@ -396,8 +415,12 @@ fn warmup_values_are_fields() {
 fn warmup_message_is_constant() {
     let ((), one) = capture(|| record_request("/health", 200, 3));
     let ((), two) = capture(|| record_request("/orders", 500, 41));
+    let (one, two) = (
+        one.first().expect("no event recorded for /health"),
+        two.first().expect("no event recorded for /orders"),
+    );
     assert_eq!(
-        one[0].message, two[0].message,
+        one.message, two.message,
         "the message must not change with the values - put them in fields, not in the text"
     );
 }
@@ -405,8 +428,14 @@ fn warmup_message_is_constant() {
 #[test]
 fn warmup_fields_survive_different_values() {
     let ((), events) = capture(|| record_request("/orders", 503, 41));
-    let event = &events[0];
-    assert_eq!(event.field("path"), Some("/orders"));
+    let event = events
+        .first()
+        .expect("no event was recorded - record_request must emit one");
+    assert_eq!(
+        event.field("path"),
+        Some("/orders"),
+        "the same fields must appear whatever the values are"
+    );
     assert_eq!(event.field("status"), Some("503"));
     assert_eq!(event.field("elapsed_ms"), Some("41"));
 }
@@ -508,24 +537,26 @@ metrics tests share nothing.
 Path: `exercises/compile_fails/25-span-guard-temporary.rs`. Self-contained
 and std-only — the `compile-fails` tool type-checks with bare `rustc` and no
 `--extern`, so it cannot use `tracing`. It mirrors the shape of
-`tracing::Span::entered`, whose guard borrows the span.
+`tracing::Span::enter`, whose guard borrows the span. (`Span::entered`
+takes the span *by value* instead and hands back an owned guard — the
+borrowing one is `enter`, which is what this file stands in for.)
 
 ```rust
 // Compile-fail exercise: this file MUST NOT compile until you fix it.
 //
-// Entering a span hands you a GUARD that borrows the span, and the span
-// stays open until the guard drops. So the span itself has to outlive the
-// guard — if you create it and enter it in one expression, the span is a
-// temporary that dies at the end of that statement, while the guard is
-// still holding a borrow of it.
+// Entering a span with `Span::enter` hands you a GUARD that borrows the
+// span, and the span stays open until the guard drops. So the span itself
+// has to outlive the guard — if you create it and enter it in one
+// expression, the span is a temporary that dies at the end of that
+// statement, while the guard is still holding a borrow of it.
 //
-// This file reproduces that with plain structs (`Span::entered` here stands
-// in for tracing's). rustc reports E0716: "temporary value dropped while
+// This file reproduces that with plain structs (`Span::enter` here stands in
+// for tracing's). rustc reports E0716: "temporary value dropped while
 // borrowed".
 //
 // The fix: give the span a name first, so it lives as long as the guard —
 //     let span = span("handle_request");
-//     let _guard = span.entered();
+//     let guard = span.enter();
 
 struct Span {
     name: String,
@@ -536,7 +567,7 @@ struct Entered<'a> {
 }
 
 impl Span {
-    fn entered(&self) -> Entered<'_> {
+    fn enter(&self) -> Entered<'_> {
         Entered { span: self }
     }
 }
@@ -548,7 +579,7 @@ fn span(name: &str) -> Span {
 }
 
 fn main() {
-    let guard = span("handle_request").entered();
+    let guard = span("handle_request").enter();
     println!("inside the span for {}", guard.span.name);
 }
 ```
@@ -579,12 +610,14 @@ lives, so the span has to outlive the guard.
   (`Metrics::record`), Compile-fail, Run
 - **Solutions** — pointer to `solutions/src/lib.rs`
 
-Each `###` subsection runs ~4-6 sentences plus a small code block. The
-"Events" and "Metrics" sections are the heaviest — they carry the two
-production skills. The Metrics section states plainly that real services use
-the `metrics` crate or OpenTelemetry, and why this lesson hand-rolls: the
-facade's recorder is global and install-once-per-process, which `cargo test`
-cannot accommodate.
+Each `###` subsection runs ~4-6 sentences plus a small code block; the
+Metrics subsection carries two (the counter type and the Prometheus
+exposition text) and the Compile-fail subsection is prose only, so the
+README has 9 code blocks. The "Events" and "Metrics" sections are the
+heaviest — they carry the two production skills. The Metrics section states plainly that real services use
+the `metrics` crate or OpenTelemetry, and why this lesson hand-rolls
+anyway: so the counter's mechanics stay visible — one `AtomicU64`, no extra
+dependency.
 
 ## Lint expectations
 
