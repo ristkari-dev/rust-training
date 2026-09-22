@@ -29,10 +29,10 @@ By the end of this lesson, the student can:
 
 1. Put a test in the right of its three homes — `#[cfg(test)] mod tests`,
    `tests/*.rs`, or a `///` example — and say what each one can reach
-2. Write a unit test that exercises a *private* item, and explain why
-   `use super::*;` is what gives it that access
-3. Write a doc test, and explain why an example that is compiled and run is
-   the only kind of documentation that cannot rot
+2. Write a unit test that exercises a *private* item, and explain where
+   that access comes from — being a child module, not the import
+3. Write a doc test, and explain why an example the tooling compiles and
+   runs is the part of the documentation least able to rot
 4. State an invariant as a `proptest` property and read the *shrunk*
    counterexample it reports
 5. Explain why `#[cfg(test)]` code does not exist in a normal build, and
@@ -44,8 +44,9 @@ In scope: the three homes of a test and what each can see; `#[cfg(test)]`
 and what it actually does to a normal build; `use super::*;` in a unit test
 module; integration tests as a *separate crate* that sees only the public
 API; doc tests — how they are compiled and run, that they need the crate
-name in a `use`, and that `#` hides a setup line from the rendered docs;
-reading `cargo test` output as three separate result blocks; the limits of
+name in a `use`, and that a leading `# ` (hash, space) hides a setup line
+from the rendered docs while `##` renders a literal `#`; reading
+`cargo test` output as three separate result blocks; the limits of
 example-based tests; property testing with `proptest` — writing a strategy,
 `prop_assert_eq!`, and reading a shrunk counterexample; `[dev-dependencies]`
 as the place test-only crates go. Mentioned but not exercised:
@@ -71,9 +72,13 @@ proptest = "1"
 ```
 
 Verified during design on rustc 1.98.1: `proptest` resolves to 1.11.0 and
-locks its tree (`rand`, `regex-syntax`, `bit-set`, `bit-vec`, `unarray`,
-`quick-error`, `num-traits`, `zerocopy`, `fnv`) with no MSRV trouble. No C
-toolchain and no external service.
+locks a tree of 22 crates (`rand` and its `rand_chacha`/`rand_core`/
+`rand_xorshift`/`ppv-lite86` companions, `regex-syntax`, `bit-set`,
+`bit-vec`, `unarray`, `quick-error`, `num-traits`, `zerocopy`, `fnv`,
+`rusty-fork`, `wait-timeout`, `tempfile`, `rustix`, `errno`, `once_cell`,
+`fastrand`, `getrandom`, `libc`, `cfg-if`, `bitflags`, `autocfg`) with no
+MSRV trouble, and the whole tree is clean under the `-D warnings` CI sets.
+No C toolchain and no external service.
 
 Both lesson crates add, after `[lints]`:
 
@@ -84,9 +89,12 @@ proptest = { workspace = true }
 
 This is the **first `[dev-dependencies]` section in the repository**, and
 that is deliberate: it is a teaching point in its own right. `proptest` is
-used only from `tests/exercise.rs`, so it is not part of the library's
-public dependency set and does not ship to anyone who depends on the crate.
-The README says so explicitly.
+used only from tests, so it is not part of the library's public dependency
+set and does not ship to anyone who depends on the crate. Note the precise
+rule, which the README states and learning goal 5 asks for: it is the
+*declaration* that keeps it out of what ships, not the usage, and a
+dev-dependency is visible wherever the crate is compiled for testing —
+`tests/`, `#[cfg(test)]` modules and doc tests alike.
 
 `cargo build --workspace --all-targets` does build dev-dependencies, so CI
 pays for proptest's tree once. Measured during design: a cold build of the
@@ -120,8 +128,25 @@ them killed the first design.
    type first.
 4. **A bare `todo!()` body makes `use super::*;` unused**, and
    `-D unused-imports` then fails `make lint`. The stub therefore ships
-   *without* the import and the student adds it. This is a feature: the
-   import is precisely the thing the exercise is teaching.
+   *without* the import and the student adds it in the same edit as their
+   first assertion — the README must say "same edit", because adding the
+   import while a `todo!()` remains is a *build* error, not a test failure.
+   Note the import is a convenience, not the access mechanism: with no
+   import at all, `super::run_len("aaab")` compiles and passes (verified).
+9. **A doc test is not compiled as its own crate.** Current rustdoc merges a
+   crate's doc tests into one bundle, so a failing example panics at
+   `…/doctest_bundle_2024.rs` and the run ends `all doctests ran in …;
+   merged doctests compilation took …`. The student sees this on their first
+   `make verify`, so the README must not claim one-crate-per-example. Each
+   block is still reported and run as a separate test.
+10. **The `#`-hiding rule needs the space.** Verified against rendered
+   `cargo doc` HTML: `# let x = 1;` is hidden but runs, `##[derive(Debug)]`
+   renders as a literal `#[derive(Debug)]`, and `#use std::fmt;` is a
+   compile error (`expected one of ! or [, found keyword use`).
+11. **An integration test cannot see `#[cfg(test)]` items either.** The
+   library is compiled twice; `tests/*.rs` links the copy built *without*
+   `cfg(test)`. Verified: calling a `#[cfg(test)] pub fn` from `tests/it.rs`
+   gives the same E0425 + "configured out" note as the compile-fail file.
 5. **`#[cfg(test)]` under the compile-fail harness produces a textbook
    error.** `rustc --edition=2024 --crate-type=lib --emit=metadata` (the
    bare invocation `tools/compile-fails` uses, with no `--test` and no
@@ -189,13 +214,13 @@ them killed the first design.
    Also worth knowing: `#[should_panic]`, `#[ignore]`, and `--nocapture`
    when you want to see your `println!`s.
 7. **Examples run out.** You can only write the cases you thought of. Every
-   example test in this lesson uses letters — because letters are what came
-   to mind.
+   example in this lesson feeds `encode` nothing but letters — because
+   letters are what came to mind.
 8. **Properties, and shrinking.**
    ```rust
    proptest! {
        #[test]
-       fn round_trip(s in ".*") {
+       fn round_trip(s in "[^0-9]{0,30}") {   // now widen it to ".*"
            prop_assert_eq!(decode(&encode(&s)), s);
        }
    }
@@ -203,19 +228,21 @@ them killed the first design.
    ```text
    minimal failing input: s = "0"
    ```
-   You name an invariant; the machine hunts for inputs. When it finds one it
-   **shrinks** it — from whatever random string broke first, down to the
-   smallest input that still breaks. One character.
-9. **Each kind caught what the other missed.** The property found `"0"` — a
-   digit in the input makes `<count><char>` ambiguous, which no hand-written
-   example was ever going to try. But the generator will not produce a run
-   of ten identical letters in a hundred tries, so `decode("12a")` — the
-   multi-digit count — is caught only by an example somebody wrote on
-   purpose. Neither kind subsumes the other.
+   You name an invariant; the machine hunts for inputs — 256 draws by
+   default. When it finds one it **shrinks** it, from whatever random string
+   broke first down to the smallest input that still breaks. One character.
+9. **Each kind caught what the other missed.** The example `decode("1a12b")`
+   catches a decoder that reads only the first digit of a count, and the
+   property never will: the generator does not produce ten identical
+   characters in a row (measured — in 1,000,000 draws the longest run was
+   5). The property catches a `decode` that indexes bytes rather than
+   characters, reporting `minimal failing input: s = "¡"`, and no example
+   here would have thought to try a non-ASCII character. Neither kind
+   subsumes the other.
 10. **Wrap — testing in Rust.**
     - three homes: beside the code, outside the crate, inside the docs
     - `#[cfg(test)]` code does not exist in a normal build
-    - a doc test is the only documentation that cannot rot
+    - a doc example is the one part of your docs the tooling checks
     - a property says what must always hold; shrinking says where it broke
     - examples find what you thought of, properties find what you didn't
 
@@ -232,8 +259,9 @@ The split:
 - **Given:** `encode` (public, complete) and `run_len` (private, complete).
 - **Warm-up (4 tests, written by the student):** two unit tests on the
   private `run_len`, two doc tests on `encode`.
-- **Main (4 tests, given):** the student implements `decode`; three example
-  tests and one `proptest` property grade it.
+- **Main (4 tests, given):** the student implements `decode`; two example
+  tests and one `proptest` property grade it, and a fourth test is a
+  tripwire that fails only if the warm-up tests are deleted.
 
 Eight graded tests, as the house shape requires — but distributed
 differently from every prior lesson, because four of them are the
@@ -315,11 +343,15 @@ mod tests {
 ```
 
 **Honesty note, to be carried into the README verbatim in substance:** a
-student who replaces `todo!("…")` with `assert!(true)` passes this warm-up.
-There is no way to grade test authorship with a test harness, and the README
-must say so rather than imply a rigour that is not there. The doc tests
-(next) *are* genuinely graded, because they require predicting an exact
-output, and the main exercise is graded outright.
+student who replaces `todo!("…")` with a test that asserts nothing passes
+this warm-up. There is no way to grade test *authorship* with a test
+harness, and the README must say so rather than imply a rigour that is not
+there. This applies to all four warm-up tests, the doc tests included — a
+doc test can be made vacuous too (`let expected: &str = &encode("aaab");`
+passes), and the first wrong guess prints the right answer in the
+`assert_eq!` diff. What the harness *can* check is that the four tests still
+exist, which `warmup_all_four_tests_are_still_there` in `tests/exercise.rs`
+does. The main exercise is graded outright.
 
 ### Warm-up part 2: the doc tests
 
@@ -362,8 +394,7 @@ Reference (`solutions/src/lib.rs`, with the crate name changed):
 
 The second doc test is not decoration: it is the student writing down, in
 their own hand, the fact that counts can exceed one digit — right before the
-main exercise asks them to parse one back. If they get this wrong the doc
-test fails and tells them so.
+main exercise asks them to parse one back.
 
 ### Main: `decode`
 
@@ -415,16 +446,11 @@ fn main_expands_each_run() {
 }
 
 #[test]
-fn main_expands_an_empty_string() {
-    assert_eq!(decode(""), "");
-}
-
-#[test]
 fn main_reads_multi_digit_counts() {
     assert_eq!(
-        decode("12a"),
-        "aaaaaaaaaaaa",
-        "a count can run to more than one digit - keep reading digits until the character"
+        decode("1a12b"),
+        "abbbbbbbbbbbb",
+        "a count can run to more than one digit, anywhere in the string - keep reading digits until the character"
     );
 }
 
@@ -432,10 +458,29 @@ proptest! {
     #![proptest_config(ProptestConfig { failure_persistence: None, ..ProptestConfig::default() })]
 
     /// Whatever `encode` produced, `decode` must turn back into the original.
+    ///
+    /// `[^0-9]` is not an arbitrary alphabet: it is exactly the domain where
+    /// this property holds, because a digit in the input makes
+    /// `<count><char>` ambiguous.
     #[test]
-    fn main_round_trips_whatever_encode_produced(s in "[a-z]{0,30}") {
+    fn main_round_trips_whatever_encode_produced(s in "[^0-9]{0,30}") {
         prop_assert_eq!(decode(&encode(&s)), s);
     }
+}
+
+/// The warm-up tests are yours to write - but not yours to delete.
+#[test]
+fn warmup_all_four_tests_are_still_there() {
+    let src = include_str!("../src/lib.rs");
+    assert!(
+        src.contains("#[cfg(test)]"),
+        "the warm-up unit test module is gone - deleting a test is not passing it"
+    );
+    assert_eq!(
+        src.matches("/// ```").count(),
+        4,
+        "both doc-test examples on `encode` must stay - deleting a test is not passing it"
+    );
 }
 ```
 
@@ -445,13 +490,30 @@ fails, which would leave an untracked file in the student's tree every time
 `make verify` goes red. The README explains what the file is and why this
 lesson switches it off, so the behaviour is taught rather than hidden.
 
-The strategy is `"[a-z]{0,30}"`, not `".*"`, and the README explains why:
-the `<count><char>` format is ambiguous the moment the input contains a
-digit, so the round-trip property simply is not true for all strings. Naming
-the domain where a property holds is part of stating the property. The
-README then invites the student to widen it to `".*"`, watch it fail, and
-read `minimal failing input: s = "0"` — which costs them nothing and is the
-most memorable thirty seconds in the lesson.
+The strategy is `"[^0-9]{0,30}"`, not `".*"` and not `"[a-z]"`. The
+`<count><char>` format is ambiguous the moment the input contains a digit,
+so the round-trip property is not true for all strings — and `[^0-9]` is
+*exactly* the domain where it is true, which makes "naming the domain where
+a property holds is part of stating it" a demonstrated point rather than an
+asserted one. The README then invites the student to widen it to `".*"`,
+watch it fail, and read `minimal failing input: s = "0"` — which costs them
+nothing and is the most memorable thirty seconds in the lesson.
+
+The three graded main tests are load-bearing in different directions, all
+verified by attacking them with deliberately broken implementations:
+
+- `decode("1a12b")` puts the multi-digit count in the *second* run. With the
+  earlier `decode("12a")`, a decoder that parsed a multi-digit count only at
+  the start of the string and single digits thereafter passed everything.
+- The property over `[^0-9]` catches a `decode` that indexes bytes instead
+  of characters, reporting `minimal failing input: s = "¡"`. Over `[a-z]` it
+  could not: `encode` is UTF-8-correct, so the crate would have shipped an
+  asymmetric encode/decode pair.
+- Conversely the property cannot catch the single-digit-count bug, because a
+  random draw does not produce ten identical characters in a row. Measured:
+  in 1,000,000 draws from `[a-z]{0,30}` the longest run seen was 5. That
+  asymmetry is the lesson's thesis, and it is now demonstrated *inside* the
+  graded suite in both directions rather than asserted on a slide.
 
 ### Compile-fail: `26-cfg-test-not-compiled.rs`
 
@@ -532,9 +594,10 @@ Exercises:
 2. `cargo test --manifest-path lessons/26-testing/solutions/Cargo.toml`
    passes 8 tests: 2 unit, 4 integration (one of them the property), 2 doc.
    (Not `make verify` — that target is hardcoded to `exercises/`.)
-3. `make verify LESSON=26-testing` against the shipped `exercises/` fails
-   all 8 and compiles cleanly — no lint errors, no build errors, only test
-   failures.
+3. `make verify LESSON=26-testing` against the shipped `exercises/` fails 7
+   of the 8 and compiles cleanly — no lint errors, no build errors, only
+   test failures. The eighth, `warmup_all_four_tests_are_still_there`,
+   passes: it is a tripwire, and nothing has been deleted yet.
 4. `cargo run --package compile-fails -- --expect broken lessons` passes
    with `26-cfg-test-not-compiled.rs` present; `--expect compiles` passes
    once the `#[cfg(test)]` line is removed.
